@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8">
+  <title>Spröd&Bröd-Beställningar</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f2ee;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1, h2 {
+      text-align: center;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    label {
+      display: block;
+      margin-top: 12px;
+      font-weight: bold;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+    }
+
+    button {
+      margin-top: 15px;
+      width: 100%;
+      padding: 10px;
+      background: #c97c5d;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #b56b4f;
+    }
+
+    .order {
+      background: #fff3ea;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+
+    .order.done {
+      opacity: 0.6;
+      text-decoration: line-through;
+    }
+
+    .order-time {
+      font-size: 12px;
+      color: #555
+    }
+
+    .order button {
+      width: auto;
+      margin-right: 5px;
+      margin-top: 5px;
+      font-size: 12px;
+    }
+
+    .done-btn { background: #4caf50; }
+    .delete-btn { background: #e53935}
+
+    #sellerPanel {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🍰 Välkommna till Spröd&Bröd 🍰</h1>
+
+<div class="container">
+  <label>Namn</label>
+  <input id="name">
+
+  <label>Bakelse</label>
+  <select id="pastry">
+    <option>Hallongrottor - 7kr:st</option>
+    <option>Finska Pinnar - 7kr:st</option>
+    <option>Kolasnittar - 7kr:st</option>
+    <option>Banankaka - 70kr</option>
+    <option>Morotskaka - 150kr</option>
+  </select>
+
+  <label>Antal</label>
+  <input type="number" id="amount" min="1" value="1">
+
+  <label>Kommentar</label>
+  <textarea id="comment"></textarea>
+
+  <button type="button" onclick="addOrder()">Skicka beställning</button>
+</div>
+
+<div class="container" id="loginBox" style="margin-top: 30px;">
+  <h2>Säljarinloggning</h2>
+
+  <label>Användarnamn</label>
+  <input type="text" id="username">
+
+  <label>Lösenord</label>
+  <input type="password" id="password">
+
+  <button onclick="loginSeller()">Logga in</button>
+</div>
+
+<div class="container" id="sellerPanel">
+  <h2>Säljarpanel</h2>
+
+  <button onclick="logoutSeller()" style="background: #777;">
+    Logga ut
+  </button>
+
+  <div id="orders" style="margin-top: 20px;"></div>
+</div>
+
+<script>
+  const SELLER_USER = "NeoMaster";
+  const SELLER_PASS = "Kaka123";
+  let sellerLoggedIn = false;
+  let orders = JSON.parse(localStorage.getItem("orders")) || [];
+  
+  async function addOrder() {
+    const now = new Date();
+
+    await addDoc(collection(db, "orders"), {
+      name: document.getElementById("name").value,
+      pastry: document.getElementById("pastry").value,
+      amount: document.getElementById("amount").value,
+      comment: document.getElementById("comment").value,
+      done: false,
+      createdAt: now
+    });
+
+    document.getElementById("name").value = "";
+    document.getElementById("comment").value = "";
+
+    alert("Beställning skickad!");
+  }
+
+  function loginSeller() {
+    if (username.value === SELLER_USER && password.value === SELLER_PASS) {
+      sellerLoggedIn = true;
+
+      loginBox.style.display = "none";
+      sellerPanel.style.display = "block";
+
+      renderOrders();
+    } else {
+      alert("Fel inloggning");
+    }
+  }
+
+  function logoutSeller() {
+    sellerLoggedIn = false;
+    sellerPanel.style.display = "none";
+    loginBox.style.display = "block";
+  }
+
+  function saveOrders() {
+  localStorage.setItem("orders", JSON.stringify(orders));
+  }
+
+  async function renderOrders() {
+    const container = document.getElementById("orders");
+    container.innerHTML = "";
+
+    const snapshot = await getDocs(collection(db, "orders"));
+
+    snapshot.forEach(docSnap => {
+      const o = docSnap.data();
+
+      const div = document.createElement("div");
+      div.className = "order" + (o.done ? " done" : "");
+      div.dataset.id = docSnap.id;
+
+      const date = o.createdAt?.toDate
+        ? o.createdAt.toDate().toLocaleString("sv-SE")
+        : "";
+
+      div.innerHTML = `
+        <strong>${o.name}</strong><br>
+        ${o.amount} st ${o.pastry}<br>
+        ${o.comment || ""}
+        <div class="order-time">📅 ${date}</div>
+
+        <button type="button" class="done-btn">✅ Klar</button>
+        <button type="button" class="delete-btn">🗑️ Ta bort</button>
+      `;
+
+      container.appendChild(div);
+    });
+  }
+
+  document.getElementById("orders").addEventListener("click", async e => {
+    if (!sellerLoggedIn) {
+      alert("Endast säljare kan ändra beställningar");
+      return;
+    }
+
+    const orderDiv = e.target.closest(".order");
+    if (!orderDiv) return;
+
+    const id = orderDiv.dataset.id;
+
+    if (e.target.classList.contains("delete-btn")) {
+      await deleteDoc(doc(db, "orders", id));
+      renderOrders();
+    }
+
+    if (e.target.classList.contains("done-btn")) {
+      await updateDoc(doc(db, "orders", id), {
+        done: !orderDiv.classList.contains("done")
+      });
+      renderOrders();
+    }
+  });
+
+</script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-app.js";
+  import {
+    getFirestore,
+    collection,
+    addDoc,
+    getDocs,
+    deleteDoc,
+    doc,
+    updateDoc
+  } from "https://www.gstatic.com/firebasejs/12.7.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAuU1FI8E9-ooRi5VLxWJrIGj4SBoKByo",
+    authDomain: "bakelse-bestallningar.firebaseapp.com",
+    projectId: "bakelse-bestallningar",
+    storageBucket: "bakelse-bestallningar.firebasestorage.app",
+    messagingSenderId: "194687991123",
+    appId: "1:194687991123:web:f8a022c7c2c679b40d35a6"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  window.db = db;
+  window.collection = collection;
+  window.addDoc = addDoc;
+  window.getDocs = getDocs;
+  window.deleteDoc = deleteDoc;
+  window.doc = doc;
+  window.updateDoc = updateDoc;
+</script>
+
+</body>
+</html>
